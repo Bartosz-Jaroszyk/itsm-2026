@@ -1,0 +1,9 @@
+{
+  "source": "gh api 'repos/swasik/itsm-2026-submissions/issues?state=all&per_page=100' --paginate --jq '.[] | select(any(.labels[]; .name == \"receipted\") and any(.labels[]; .name == \"kind:submission\")) | {number, attempt: (try (.title | capture(\"lab[0-9]+/v(?<attempt>[0-9]+)\").attempt | tonumber) catch null)} | @json'",
+  "captured_at": "2026-09-26T14:05:43Z",
+  "capture_path": "evidence/rework-class-issues.jsonl",
+  "sha256": "a61f894fbb6265b8354bc1a93c2eb302cea73ecf39b9954260271a3def6faf74",
+  "deployments": 58,
+  "rework_deployments": 13,
+  "deployment_rework_rate": 0.224138
+}
