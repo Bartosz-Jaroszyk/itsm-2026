@@ -1,0 +1,46 @@
+# ai-generated: 90% - AI drafted promtool burn-rate tests from MONITORING-SPEC.md; reviewed against alert thresholds
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: '0+600x250'
+      - series: 'http_server_request_duration_seconds_bucket{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200", le="0.16"}'
+        values: '0+600x70 42427.2+427.2x179'
+    alert_rule_test:
+      - eval_time: 104m
+        alertname: KbSearchLatencyFastBurn
+        exp_alerts: []
+      - eval_time: 105m
+        alertname: KbSearchLatencyFastBurn
+        exp_alerts:
+          - exp_labels:
+              service: svcdesk
+              slo: latency
+              severity: P1
+            exp_annotations:
+              summary: "GET /kb/search latency is rapidly burning its 30-day SLO budget"
+
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200"}'
+        values: '0+600x700'
+      - series: 'http_server_request_duration_seconds_bucket{job="svcdesk", instance="svcdesk:8080", http_request_method="GET", http_route="/kb/search", http_response_status_code="200", le="0.16"}'
+        values: '0+600x370 222528+528x329'
+    alert_rule_test:
+      - eval_time: 554m
+        alertname: KbSearchLatencySlowBurn
+        exp_alerts: []
+      - eval_time: 555m
+        alertname: KbSearchLatencySlowBurn
+        exp_alerts:
+          - exp_labels:
+              service: svcdesk
+              slo: latency
+              severity: P2
+            exp_annotations:
+              summary: "GET /kb/search latency is steadily burning its 30-day SLO budget"

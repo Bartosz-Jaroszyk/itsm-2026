@@ -1,0 +1,62 @@
+# ai-generated: 90% - AI drafted latency burn-rate rules from slo.md and MONITORING-SPEC.md; reviewed for labels and thresholds
+groups:
+  - name: svcdesk-slo
+    interval: 5s
+    rules:
+      - alert: KbSearchLatencyFastBurn
+        expr: |
+          (
+            (
+              sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[1h]))
+              -
+              sum(rate(http_server_request_duration_seconds_bucket{job="svcdesk", http_route="/kb/search", le="0.16"}[1h]))
+            )
+            /
+            sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[1h]))
+          ) > 14.4 * (1 - 0.99)
+          and
+          (
+            (
+              sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[5m]))
+              -
+              sum(rate(http_server_request_duration_seconds_bucket{job="svcdesk", http_route="/kb/search", le="0.16"}[5m]))
+            )
+            /
+            sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[5m]))
+          ) > 14.4 * (1 - 0.99)
+        for: 5m
+        labels:
+          service: svcdesk
+          slo: latency
+          severity: P1
+        annotations:
+          summary: "GET /kb/search latency is rapidly burning its 30-day SLO budget"
+
+      - alert: KbSearchLatencySlowBurn
+        expr: |
+          (
+            (
+              sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[6h]))
+              -
+              sum(rate(http_server_request_duration_seconds_bucket{job="svcdesk", http_route="/kb/search", le="0.16"}[6h]))
+            )
+            /
+            sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[6h]))
+          ) > 6 * (1 - 0.99)
+          and
+          (
+            (
+              sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[30m]))
+              -
+              sum(rate(http_server_request_duration_seconds_bucket{job="svcdesk", http_route="/kb/search", le="0.16"}[30m]))
+            )
+            /
+            sum(rate(http_server_request_duration_seconds_count{job="svcdesk", http_route="/kb/search"}[30m]))
+          ) > 6 * (1 - 0.99)
+        for: 5m
+        labels:
+          service: svcdesk
+          slo: latency
+          severity: P2
+        annotations:
+          summary: "GET /kb/search latency is steadily burning its 30-day SLO budget"

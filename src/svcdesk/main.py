@@ -1,6 +1,12 @@
 # ai-generated: 80% - GitHub Copilot generated the initial implementation, manually reviewed and adjusted
+import json
 import os
 import re
+import threading
+import time as monotonic_time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, time, timedelta, timezone
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
@@ -8,15 +14,98 @@ from typing import Annotated, Any, Literal, NoReturn
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 
 app = FastAPI()
 WARSAW = ZoneInfo("Europe/Warsaw")
 UTC = timezone.utc
+REQUEST_DURATION_BUCKETS = (
+    0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.12, 0.13, 0.14, 0.145,
+    0.15, 0.155, 0.16, 0.165, 0.17, 0.175, 0.18, 0.19, 0.2, 0.22,
+    0.25, 0.3, 0.4, 0.5, 0.75, 1, 1.5, 2.5, 5, 10,
+)
+request_duration_observations: dict[
+    tuple[str, str, str], tuple[int, float, list[int]]
+] = {}
+request_duration_lock = threading.Lock()
+
+
+def observe_request_duration(
+    method: str,
+    route: str,
+    status_code: int,
+    duration: float,
+) -> None:
+    key = (method, route, str(status_code))
+    with request_duration_lock:
+        count, total, buckets = request_duration_observations.get(
+            key, (0, 0.0, [0] * len(REQUEST_DURATION_BUCKETS))
+        )
+        request_duration_observations[key] = (
+            count + 1,
+            total + duration,
+            [
+                bucket_count + int(duration <= boundary)
+                for bucket_count, boundary in zip(buckets, REQUEST_DURATION_BUCKETS)
+            ],
+        )
+
+
+def prometheus_label_value(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
+class RequestDurationMiddleware:
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        started = monotonic_time.perf_counter()
+        status_code = 500
+
+        async def capture_status(message: dict[str, Any]) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
+
+        try:
+            await self.app(scope, receive, capture_status)
+        finally:
+            route = scope.get("route")
+            route_template = getattr(route, "path", "unmatched")
+            observe_request_duration(
+                scope["method"],
+                route_template,
+                status_code,
+                monotonic_time.perf_counter() - started,
+            )
+
+
+app.add_middleware(RequestDurationMiddleware)
+
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        _ = req, fp, code, msg, headers, newurl
+        return None
+
 
 Priority = Literal["P1", "P2", "P3", "P4"]
 State = Literal["new", "acknowledged", "in_progress", "resolved", "closed"]
@@ -198,6 +287,69 @@ def clock_header(x_test_clock: Annotated[str | None, Header()] = None) -> dateti
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "svcdesk"}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def metrics() -> str:
+    with request_duration_lock:
+        observations = list(request_duration_observations.items())
+
+    lines = [
+        "# HELP http_server_request_duration_seconds HTTP request duration in seconds.",
+        "# TYPE http_server_request_duration_seconds histogram",
+    ]
+    for (method, route, status_code), (count, total, buckets) in sorted(observations):
+        labels = (
+            f'http_request_method="{prometheus_label_value(method)}",'
+            f'http_route="{prometheus_label_value(route)}",'
+            f'http_response_status_code="{status_code}"'
+        )
+        for boundary, bucket_count in zip(REQUEST_DURATION_BUCKETS, buckets):
+            lines.append(
+                f'http_server_request_duration_seconds_bucket{{{labels},'
+                f'le="{boundary:g}"}} {bucket_count}'
+            )
+        lines.extend(
+            [
+                f'http_server_request_duration_seconds_bucket{{{labels},le="+Inf"}} {count}',
+                f"http_server_request_duration_seconds_sum{{{labels}}} {total:.12g}",
+                f"http_server_request_duration_seconds_count{{{labels}}} {count}",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+@app.get("/kb/search")
+def search_kb(q: Annotated[str, Query(min_length=1, max_length=200)]) -> Any:
+    base_url = os.getenv("KB_INDEX_URL", "http://kb-index:8080").rstrip("/")
+    query_string = urllib.parse.urlencode({"q": q})
+    upstream_request = urllib.request.Request(
+        f"{base_url}/search?{query_string}",
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    opener = urllib.request.build_opener(NoRedirectHandler())
+    try:
+        with opener.open(upstream_request, timeout=5) as response:
+            if response.status != 200:
+                return JSONResponse(
+                    status_code=502,
+                    content={"error": {"code": "upstream_unavailable"}},
+                )
+            payload = json.loads(response.read())
+        if not isinstance(payload, dict) or "hits" not in payload:
+            raise ValueError("upstream response does not contain hits")
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        OSError,
+        ValueError,
+    ):
+        return JSONResponse(
+            status_code=502,
+            content={"error": {"code": "upstream_unavailable"}},
+        )
+    return {"query": q, "hits": payload["hits"]}
 
 
 @app.post("/tickets", response_model=Ticket, status_code=201)
