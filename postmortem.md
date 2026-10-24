@@ -9,7 +9,12 @@ lab4_postmortem:
   mttd_seconds: 214
   mtta_seconds: 48
   mttr_seconds: 394
-  identified_flags: [productCatalogFailure]
+  ##identified_flags: [productCatalogFailure]
+  identified_flags:
+    - productCatalogFailure
+    - productCatalogLockContention
+    - paymentFailure
+  
 ---
 <!-- ai-generated: 25% - assembled from the incident ticket, TSDB snapshot, RCA transcript, Lab 4 template, and verified incident command output -->
 
