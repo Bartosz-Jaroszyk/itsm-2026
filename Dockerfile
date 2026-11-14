@@ -14,7 +14,11 @@ WORKDIR /app
 #   fastapi==0.141.1
 #   uvicorn==0.52.4
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r /app/requirements.txt \
+    && python -m pip uninstall -y pip setuptools urllib3 msgpack
 
 # Your code lives under src/ (see src/README.md). Adjust the module path in CMD to your layout.
 COPY src/ /app/src/

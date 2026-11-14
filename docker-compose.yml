@@ -26,8 +26,6 @@ services:
     image: ghcr.io/swasik/seeded-toxic:2026
     environment:
       SEEDED_TOXIC_LOGIN: "Bartosz-Jaroszyk"       # Set to your GitHub login for the course image.
-    ports:
-      - "8081:8080"
 
   prometheus:
     image: prom/prometheus:v3.15.0
