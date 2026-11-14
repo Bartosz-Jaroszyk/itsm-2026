@@ -1,6 +1,6 @@
 ---
 lab5_triage:
-  image: ghcr.io/bartosz-jaroszyk/itsm-2026@sha256:PENDING
+  image: ghcr.io/bartosz-jaroszyk/itsm-2026@sha256:2c42d725d97b29c5170923e5cf0e98210596d8dbc03458cb1636d98ba20b4362
   sarif_receipt: 364
 ---
 <!-- ai-generated: 100% - completed the Lab 5 triage from the receipted SARIF and bake-off matrix -->
