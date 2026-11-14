@@ -1,0 +1,23 @@
+# ai-generated: 100% - Lab 5 Stretch 3 custom Semgrep rules
+rules:
+  - id: svcdesk.unbounded-upstream-read
+    languages:
+      - python
+    severity: WARNING
+    message: Bound upstream response reads before parsing to limit memory use.
+    metadata:
+      category: security
+      confidence: MEDIUM
+      impact: MEDIUM
+    pattern: $RESPONSE.read()
+
+  - id: svcdesk.env-controlled-upstream-url
+    languages:
+      - python
+    severity: WARNING
+    message: Restrict KB_INDEX_URL to the intended upstream; it becomes an outbound request target.
+    metadata:
+      category: security
+      confidence: MEDIUM
+      impact: MEDIUM
+    pattern: os.getenv("KB_INDEX_URL", ...)
